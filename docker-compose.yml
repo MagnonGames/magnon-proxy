@@ -12,7 +12,7 @@ proxy:
         - /var/run/docker.sock:/tmp/docker.sock:ro
 le-provider:
     container_name: le-provider
-    image: jrcs/letsencrypt-nginx-proxy-companion
+    image: alastaircoote/docker-letsencrypt-nginx-proxy-companion
     restart: always
     volumes_from:
         - proxy
