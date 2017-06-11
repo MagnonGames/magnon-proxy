@@ -1,21 +1,64 @@
-proxy:
-    container_name: proxy
-    image: jwilder/nginx-proxy
-    restart: always
-    ports:
-        - "80:80"
-        - "443:443"
-    volumes:
-        - /var/www/certs/:/etc/nginx/certs:ro
-        - /etc/nginx/vhost.d
-        - /usr/share/nginx/html
-        - /var/run/docker.sock:/tmp/docker.sock:ro
-le-provider:
-    container_name: le-provider
-    image: alastaircoote/docker-letsencrypt-nginx-proxy-companion
-    restart: always
-    volumes_from:
-        - proxy
-    volumes:
-        - /var/www/certs:/etc/nginx/certs:rw
-        - /var/run/docker.sock:/var/run/docker.sock:ro
+# Uhm, thanks to @buchdag for pretty much all the source, I guess?
+
+version: "3"
+
+services:
+    nginx:
+        image: nginx:stable-alpine
+        container_name: nginx-proxy
+        ports:
+          - "80:80"
+          - "443:443"
+        volumes:
+          - conf:/etc/nginx/conf.d
+          - vhost:/etc/nginx/vhost.d
+          - html:/usr/share/nginx/html
+          - certs:/etc/nginx/certs:ro
+        labels:
+          - "com.github.jrcs.letsencrypt_nginx_proxy_companion.nginx_proxy=true"
+        restart: on-failure
+
+    dockergen:
+        image: jwilder/docker-gen:latest
+        container_name: nginx-proxy-gen
+        depends_on:
+          - nginx
+        command: -notify-sighup nginx-proxy -watch -wait 5s:30s /etc/docker-gen/templates/nginx.tmpl /etc/nginx/conf.d/default.conf
+        volumes:
+          - conf:/etc/nginx/conf.d
+          - vhost:/etc/nginx/vhost.d
+          - html:/usr/share/nginx/html
+          - certs:/etc/nginx/certs:ro
+          - /var/run/docker.sock:/tmp/docker.sock:ro
+          - ./nginx.tmpl:/etc/docker-gen/templates/nginx.tmpl:ro
+        restart: on-failure
+  
+    letsencrypt:
+        image: jrcs/letsencrypt-nginx-proxy-companion:latest
+        container_name: nginx-proxy-le
+        depends_on:
+          - nginx
+          - dockergen
+        environment:
+          - NGINX_DOCKER_GEN_CONTAINER=nginx-proxy-gen
+        volumes:
+          - conf:/etc/nginx/conf.d
+          - vhost:/etc/nginx/vhost.d
+          - html:/usr/share/nginx/html
+          - certs:/etc/nginx/certs
+          - /var/run/docker.sock:/var/run/docker.sock:ro
+        restart: on-failure
+
+volumes:
+    conf:
+    vhost:
+    html:
+    certs:
+
+# Do not forget to 'docker network create nginx-proxy' before launch
+# and to add '--network nginx-proxy' to proxyed containers. 
+
+networks:
+    default:
+        external:
+            name: nginx-proxy
